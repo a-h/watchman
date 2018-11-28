@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/a-h/watchman/collector"
+	"github.com/a-h/watchman/collector/github"
 )
 
 var token = flag.String("token", "", "GitHub auth token")
@@ -13,7 +13,7 @@ var repo = flag.String("repo", "", "GitHub repo URL")
 
 func main() {
 	flag.Parse()
-	c := collector.NewCollector(*token)
+	c := github.NewCollector(*token)
 	issues, err := c.Issues(context.Background(), *repo)
 	if err != nil {
 		fmt.Printf("Error getting issue: %v\n", err)
