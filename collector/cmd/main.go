@@ -9,7 +9,7 @@ import (
 )
 
 var token = flag.String("token", "", "GitHub auth token")
-var repo = flag.String("repo", "", "GitHub repo")
+var repo = flag.String("repo", "", "GitHub repo URL")
 
 func main() {
 	flag.Parse()
