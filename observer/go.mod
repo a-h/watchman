@@ -1,4 +1,4 @@
-module github.com/a-h/watchman/collector
+module github.com/a-h/watchman/observer
 
 require (
 	github.com/machinebox/graphql v0.2.2

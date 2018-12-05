@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 
-	"github.com/a-h/watchman/collector/github"
+	"github.com/a-h/watchman/observer/github"
 )
 
 var token = flag.String("token", "", "GitHub auth token")

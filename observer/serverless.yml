@@ -1,0 +1,124 @@
+service: watchman-observer
+frameworkVersion: ">=1.28.0 <2.0.0"
+
+custom:
+  alertSnsTopicArn: arn:aws:sns:eu-west-2:YOUR_ACCOUNT_ID:YOUR_TOPIC_NAME
+  repositoryProcessingTopic: ${self:service}-${opt:stage, self:provider.stage}-repository-processing
+  issueProcessingTopic: ${self:service}-${opt:stage, self:provider.stage}-issue-processing
+
+provider:
+  name: aws
+  runtime: go1.x
+  stage: prod
+  region: eu-west-2
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+         - "dynamodb:Query"
+         - "dynamodb:UpdateItem"
+         - "dynamodb:PutItem"
+      Resource:
+        Fn::GetAtt: [ RepositoryTable, Arn ]
+    - Effect: "Allow"
+      Action:
+         - "dynamodb:GetItem"
+         - "dynamodb:PutItem"
+      Resource:
+        Fn::GetAtt: [ CommentTable, Arn ]
+    - Effect: "Allow"
+      Action:
+         - "sns:Publish"
+      Resource: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.repositoryProcessingTopic}" ] ] }
+    - Effect: "Allow"
+      Action:
+         - "sns:Publish"
+      Resource: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.issueProcessingTopic}" ] ] }
+    - Effect: "Allow"
+      Action:
+         - "sns:Publish"
+      Resource: "${self:custom.alertSnsTopicArn}"
+
+package:
+ exclude:
+   - ./**
+ include:
+   - ./bin/**
+
+functions:
+  start: # Publish an SNS notification for each repo in the table.
+    handler: bin/start
+    memorySize: 256 # MB
+    timeout: 300 # seconds
+    events:
+      - schedule: rate(1 hour)
+    reservedConcurrency: 1
+    environment:
+      DYNAMODB_REGION: eu-west-2
+      REPOSITORY_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-repository
+      REPOSITORY_PROCESSING_TOPIC: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.repositoryProcessingTopic}" ] ] }
+  repo: # Publish an SNS notification for each issue in a repo which has been recently updated.
+    handler: bin/repo
+    memorySize: 256 # MB
+    timeout: 300 # seconds
+    events:
+      - sns: ${self:custom.repositoryProcessingTopic}
+    reservedConcurrency: 1
+    environment:
+      DYNAMODB_REGION: eu-west-2
+      ISSUE_PROCESSING_TOPIC: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.issueProcessingTopic}" ] ]  }
+  issue: # Check each comment in an issue.
+    handler: bin/issue
+    memorySize: 256 # MB
+    timeout: 300 # seconds
+    events:
+      - sns: ${self:custom.issueProcessingTopic}
+    reservedConcurrency: 1
+    environment:
+      DYNAMODB_REGION: eu-west-2
+      COMMENT_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-comment    
+      ALERT_SNS_TOPIC_ARN: ${self:custom.alertSnsTopicArn}
+
+resources:
+  Resources:
+    RepositoryTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-repository
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+        SSESpecification:
+          SSEEnabled: true
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5 # Scale this for how many items you have in your table, since it will be scanned.
+          WriteCapacityUnits: 1
+        KeySchema:
+          - AttributeName: service # e.g. github.
+            KeyType: HASH
+          - AttributeName: url
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: service
+            AttributeType: S
+          - AttributeName: url
+            AttributeType: S
+    CommentTable:
+      Type: "AWS::DynamoDB::Table"
+      Properties:
+        TableName: ${self:service}-${opt:stage, self:provider.stage}-comment
+        PointInTimeRecoverySpecification:
+          PointInTimeRecoveryEnabled: false
+        SSESpecification:
+          SSEEnabled: true
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 5
+        KeySchema:
+          - AttributeName: url
+            KeyType: HASH
+          - AttributeName: textHash
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: url
+            AttributeType: S
+          - AttributeName: textHash
+            AttributeType: S

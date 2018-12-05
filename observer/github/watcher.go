@@ -2,6 +2,8 @@ package github
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -146,6 +148,12 @@ type Comment struct {
 	URL         string    `json:"url"`
 	BodyText    string    `json:"bodyText"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+// Hash of the comment.
+func (c Comment) Hash() string {
+	j, _ := json.Marshal(c)
+	return fmt.Sprintf("%x2", sha256.Sum256([]byte(j)))
 }
 
 // NewComment creates a comment with all required fields populated.
