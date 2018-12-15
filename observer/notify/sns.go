@@ -25,8 +25,16 @@ type SNS struct {
 
 // Notify via SNS.
 func (s SNS) Notify(riss data.RepositoryIssue, comment github.Comment) error {
-	subject := fmt.Sprintf("Possible security concern: %s", comment.URL)
-	msg := NewMessage(subject, comment.BodyText)
+	url := comment.URL
+	if url == "" {
+		url = riss.Issue.URL
+	}
+	bodyText := comment.BodyText
+	if bodyText == "" {
+		bodyText = riss.Issue.BodyText
+	}
+	subject := fmt.Sprintf("Possible security concern: %s", url)
+	msg := NewMessage(subject, bodyText)
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("sns: failed to marshal respository issue: %v", err)

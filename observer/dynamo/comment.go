@@ -1,8 +1,6 @@
 package dynamo
 
 import (
-	"fmt"
-
 	"github.com/a-h/watchman/observer/data"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -30,7 +28,7 @@ type CommentStore struct {
 	TableName *string
 }
 
-func (store CommentStore) Put(r data.Comment) (err error) {
+func (store CommentStore) Put(r data.Comment) (updated bool, err error) {
 	item, err := dynamodbattribute.MarshalMap(r)
 	if err != nil {
 		return
@@ -40,7 +38,7 @@ func (store CommentStore) Put(r data.Comment) (err error) {
 		Item:         item,
 		ReturnValues: aws.String(dynamodb.ReturnValueUpdatedOld),
 	})
-	fmt.Println("Returned from comment: ", rv.Attributes)
+	_, updated = rv.Attributes["url"]
 	return
 }
 

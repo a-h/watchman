@@ -1,13 +1,17 @@
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/a-h/watchman/observer/data"
+	"github.com/a-h/watchman/observer/dynamo"
 	"github.com/a-h/watchman/observer/github"
 	"github.com/a-h/watchman/observer/logger"
 	"github.com/a-h/watchman/observer/notify"
@@ -45,11 +49,21 @@ func (h Handler) Handle(ctx context.Context, e events.SNSEvent) error {
 
 func (h Handler) handle(ctx context.Context, riss data.RepositoryIssue) error {
 	l := logger.For(pkg, "handle").WithField("issueUrl", riss.Issue.URL)
-	l.Info("listing comments")
 	comments, err := h.ListComments(ctx, riss.Issue.Owner, riss.Issue.Repo, riss.Issue.Number)
 	if err != nil {
 		l.WithError(err).Error("error listing comments")
 		return fmt.Errorf("issue: error listing comments for repo: %v", err)
+	}
+	l.WithField("commentCount", len(comments)).Info("found comments")
+	// Check the issue text.
+	if riss.Issue.UpdatedAt.After(riss.Repository.LastUpdated) {
+		if containsSecurityKeywords(riss.Issue.BodyText) {
+			l.Info("notifying based on issue body text")
+			err = h.Notify(riss, github.Comment{})
+			if err != nil {
+				return fmt.Errorf("issue: error notifying based on issue body text for issue %v: %v", riss.Issue.URL, err)
+			}
+		}
 	}
 	for _, comment := range comments {
 		ll := l.WithField("commentUrl", comment.URL)
@@ -67,39 +81,53 @@ func (h Handler) handle(ctx context.Context, riss data.RepositoryIssue) error {
 		}
 		if exists {
 			ll.Info("already processed")
+			continue
 		}
-		//TODO: Check the content for security-related keywords.
+		if !containsSecurityKeywords(comment.BodyText) {
+			ll.Info("no security content found")
+		}
 		ll.Info("notifying")
-		if h.Notify != nil {
-			err = h.Notify(riss, comment)
-			if err != nil {
-				ll.WithError(err).Error("error sending notification")
-				return fmt.Errorf("issue: error sending notification for comment %v: %v", comment.URL, err)
-			}
+		err = h.Notify(riss, comment)
+		if err != nil {
+			ll.WithError(err).Error("error sending notification")
+			return fmt.Errorf("issue: error sending notification for comment %v: %v", comment.URL, err)
 		}
 	}
 	return nil
+}
+
+var securityWords = []string{"security", "exploit", "vulnerable", "exploited", "insecure", "xss"}
+
+func containsSecurityKeywords(text string) bool {
+	scanner := bufio.NewScanner(bytes.NewBufferString(text))
+	scanner.Split(bufio.ScanWords)
+	for scanner.Scan() {
+		for _, securityWord := range securityWords {
+			if strings.EqualFold(securityWord, scanner.Text()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func main() {
 	githubToken := os.Getenv("GITHUB_TOKEN")
 	collector := github.NewCollector(githubToken)
 
-	// commentTableName := os.Getenv("COMMENT_TABLE_NAME")
-	// awsRegion := os.Getenv("AWS_REGION")
-	// store, err := dynamo.NewCommentStore(awsRegion, commentTableName)
-	// if err != nil {
-	// 	logger.For(pkg, "main").WithError(err).Fatal("failed to create comment store")
-	// }
+	commentTableName := os.Getenv("COMMENT_TABLE_NAME")
+	awsRegion := os.Getenv("AWS_REGION")
+	store, err := dynamo.NewCommentStore(awsRegion, commentTableName)
+	if err != nil {
+		logger.For(pkg, "main").WithError(err).Fatal("failed to create comment store")
+	}
 	alertTopic := os.Getenv("ALERT_SNS_TOPIC_ARN")
 	n := notify.NewSNS(alertTopic)
 	h := Handler{
 		ListComments: collector.Comments,
 		Notify:       n.Notify,
 		MarkNotified: func(comment data.Comment) (exists bool, err error) {
-			//TODO: Make it mark it properly.
-			// return store.Put(data.Comment{})
-			return false, nil
+			return store.Put(data.Comment{})
 		},
 	}
 	lambda.Start(h.Handle)
