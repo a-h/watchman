@@ -8,10 +8,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/a-h/watchman/observer/data"
-	"github.com/a-h/watchman/observer/dynamo"
 	"github.com/a-h/watchman/observer/github"
 	"github.com/a-h/watchman/observer/logger"
 	"github.com/a-h/watchman/observer/notify"
@@ -71,18 +69,6 @@ func (h Handler) handle(ctx context.Context, riss data.RepositoryIssue) error {
 			ll.Info("previously checked")
 			continue
 		}
-		exists, err := h.MarkNotified(data.Comment{
-			URL:       comment.URL,
-			Hash:      comment.Hash(),
-			HandledAt: time.Now().UTC(),
-		})
-		if err != nil {
-			return fmt.Errorf("issue: error marking comment %v as notified: %v", comment.URL, err)
-		}
-		if exists {
-			ll.Info("already processed")
-			continue
-		}
 		if !containsSecurityKeywords(comment.BodyText) {
 			ll.Info("no security content found")
 		}
@@ -114,21 +100,11 @@ func containsSecurityKeywords(text string) bool {
 func main() {
 	githubToken := os.Getenv("GITHUB_TOKEN")
 	collector := github.NewCollector(githubToken)
-
-	commentTableName := os.Getenv("COMMENT_TABLE_NAME")
-	awsRegion := os.Getenv("AWS_REGION")
-	store, err := dynamo.NewCommentStore(awsRegion, commentTableName)
-	if err != nil {
-		logger.For(pkg, "main").WithError(err).Fatal("failed to create comment store")
-	}
 	alertTopic := os.Getenv("ALERT_SNS_TOPIC_ARN")
 	n := notify.NewSNS(alertTopic)
 	h := Handler{
 		ListComments: collector.Comments,
 		Notify:       n.Notify,
-		MarkNotified: func(comment data.Comment) (exists bool, err error) {
-			return store.Put(data.Comment{})
-		},
 	}
 	lambda.Start(h.Handle)
 }

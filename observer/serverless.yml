@@ -22,12 +22,6 @@ provider:
         Fn::GetAtt: [ RepositoryTable, Arn ]
     - Effect: "Allow"
       Action:
-         - "dynamodb:GetItem"
-         - "dynamodb:PutItem"
-      Resource:
-        Fn::GetAtt: [ CommentTable, Arn ]
-    - Effect: "Allow"
-      Action:
          - "sns:Publish"
       Resource: 
         Fn::Join: ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.repositoryProcessingTopic}" ] ]
@@ -76,7 +70,6 @@ functions:
       - sns: ${self:custom.issueProcessingTopic}
     reservedConcurrency: 1
     environment:
-      COMMENT_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-comment    
       ALERT_SNS_TOPIC_ARN: ${self:custom.alertSnsTopicArn}
       GITHUB_TOKEN: ${self:custom.githubToken}
 
@@ -102,25 +95,4 @@ resources:
           - AttributeName: service
             AttributeType: S
           - AttributeName: url
-            AttributeType: S
-    CommentTable:
-      Type: "AWS::DynamoDB::Table"
-      Properties:
-        TableName: ${self:service}-${opt:stage, self:provider.stage}-comment
-        PointInTimeRecoverySpecification:
-          PointInTimeRecoveryEnabled: false
-        SSESpecification:
-          SSEEnabled: true
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 5
-        KeySchema:
-          - AttributeName: url
-            KeyType: HASH
-          - AttributeName: textHash
-            KeyType: RANGE
-        AttributeDefinitions:
-          - AttributeName: url
-            AttributeType: S
-          - AttributeName: textHash
             AttributeType: S
