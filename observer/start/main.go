@@ -3,8 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
+	"time"
+
+	"github.com/a-h/watchman/observer/sender"
 
 	"github.com/a-h/watchman/observer/data"
+	"github.com/a-h/watchman/observer/dynamo"
 	"github.com/a-h/watchman/observer/logger"
 	"github.com/aws/aws-lambda-go/lambda"
 )
@@ -38,12 +43,31 @@ func (h Handler) Handle(ctx context.Context) error {
 			ll.WithError(err).Error("failed to set last updated date")
 			return fmt.Errorf("start: error updating last updated date for repo %v: %v", repo.URL, err)
 		}
+		ll.Info("processed repo")
 	}
 	return nil
 }
 
 func main() {
-	//TODO: Populate handler.
-	h := Handler{}
+	awsRegion := os.Getenv("AWS_REGION")
+	repositoryTableName := os.Getenv("REPOSITORY_TABLE_NAME")
+	store, err := dynamo.NewRepoStore(awsRegion, repositoryTableName)
+	if err != nil {
+		logger.For(pkg, "main").WithError(err).Fatal("failed to create repository store")
+	}
+	processingTopic := os.Getenv("REPOSITORY_PROCESSING_TOPIC")
+	s := sender.NewSNS(awsRegion, processingTopic)
+	h := Handler{
+		ListRepositories: func() (repos []data.Repository, err error) {
+			repos, _, err = store.Query("github")
+			return
+		},
+		SendToRepoInputQueue: func(r data.Repository) (err error) {
+			return s.Send("repo", r)
+		},
+		UpdateLastUpdatedDate: func(repoURL string) error {
+			return store.Update("github", repoURL, time.Now().UTC())
+		},
+	}
 	lambda.Start(h.Handle)
 }

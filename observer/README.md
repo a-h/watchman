@@ -6,6 +6,7 @@ Observes Github repositories to look for issues and commits which may be securit
 
 * Configure your target SNS notification endpoint in `serverless.yml`.
 * Install the app to your AWS environment using the Serverless Framework's `serverless deploy` command.
+  * `serverless deploy --alertSnsTopicArn=<TOPIC_ARN> --githubToken=<GITHUB_TOKEN>`
 
 # Structure
 

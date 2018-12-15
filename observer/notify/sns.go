@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/a-h/watchman/observer/data"
+	"github.com/a-h/watchman/observer/github"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sns"
@@ -23,9 +24,9 @@ type SNS struct {
 }
 
 // Notify via SNS.
-func (s SNS) Notify(riss data.RepositoryIssue) error {
-	subject := fmt.Sprintf("Possible security concern: %s", riss.Issue.URL)
-	msg := NewMessage(subject, riss.Issue.BodyText)
+func (s SNS) Notify(riss data.RepositoryIssue, comment github.Comment) error {
+	subject := fmt.Sprintf("Possible security concern: %s", comment.URL)
+	msg := NewMessage(subject, comment.BodyText)
 	b, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("sns: failed to marshal respository issue: %v", err)

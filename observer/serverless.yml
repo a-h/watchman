@@ -2,7 +2,8 @@ service: watchman-observer
 frameworkVersion: ">=1.28.0 <2.0.0"
 
 custom:
-  alertSnsTopicArn: arn:aws:sns:eu-west-2:YOUR_ACCOUNT_ID:YOUR_TOPIC_NAME
+  githubToken: ${opt:githubToken}
+  alertSnsTopicArn: ${opt:alertSnsTopicArn}
   repositoryProcessingTopic: ${self:service}-${opt:stage, self:provider.stage}-repository-processing
   issueProcessingTopic: ${self:service}-${opt:stage, self:provider.stage}-issue-processing
 
@@ -28,11 +29,13 @@ provider:
     - Effect: "Allow"
       Action:
          - "sns:Publish"
-      Resource: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.repositoryProcessingTopic}" ] ] }
+      Resource: 
+        Fn::Join: ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.repositoryProcessingTopic}" ] ]
     - Effect: "Allow"
       Action:
          - "sns:Publish"
-      Resource: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.issueProcessingTopic}" ] ] }
+      Resource:
+        Fn::Join: ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.issueProcessingTopic}" ] ]
     - Effect: "Allow"
       Action:
          - "sns:Publish"
@@ -49,11 +52,10 @@ functions:
     handler: bin/start
     memorySize: 256 # MB
     timeout: 300 # seconds
-    events:
-      - schedule: rate(1 hour)
+    # events:
+    #   - schedule: rate(1 hour)
     reservedConcurrency: 1
     environment:
-      DYNAMODB_REGION: eu-west-2
       REPOSITORY_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-repository
       REPOSITORY_PROCESSING_TOPIC: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.repositoryProcessingTopic}" ] ] }
   repo: # Publish an SNS notification for each issue in a repo which has been recently updated.
@@ -64,8 +66,8 @@ functions:
       - sns: ${self:custom.repositoryProcessingTopic}
     reservedConcurrency: 1
     environment:
-      DYNAMODB_REGION: eu-west-2
       ISSUE_PROCESSING_TOPIC: { "Fn::Join" : ["", ["arn:aws:sns:${self:provider.region}:", { "Ref" : "AWS::AccountId" }, ":${self:custom.issueProcessingTopic}" ] ]  }
+      GITHUB_TOKEN: ${self:custom.githubToken}
   issue: # Check each comment in an issue.
     handler: bin/issue
     memorySize: 256 # MB
@@ -74,9 +76,9 @@ functions:
       - sns: ${self:custom.issueProcessingTopic}
     reservedConcurrency: 1
     environment:
-      DYNAMODB_REGION: eu-west-2
       COMMENT_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-comment    
       ALERT_SNS_TOPIC_ARN: ${self:custom.alertSnsTopicArn}
+      GITHUB_TOKEN: ${self:custom.githubToken}
 
 resources:
   Resources:

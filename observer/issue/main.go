@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
-
-	"github.com/welldigital/pusher/logger"
 
 	"github.com/a-h/watchman/observer/data"
 	"github.com/a-h/watchman/observer/github"
+	"github.com/a-h/watchman/observer/logger"
+	"github.com/a-h/watchman/observer/notify"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 )
@@ -44,6 +45,7 @@ func (h Handler) Handle(ctx context.Context, e events.SNSEvent) error {
 
 func (h Handler) handle(ctx context.Context, riss data.RepositoryIssue) error {
 	l := logger.For(pkg, "handle").WithField("issueUrl", riss.Issue.URL)
+	l.Info("listing comments")
 	comments, err := h.ListComments(ctx, riss.Issue.Owner, riss.Issue.Repo, riss.Issue.Number)
 	if err != nil {
 		l.WithError(err).Error("error listing comments")
@@ -68,17 +70,37 @@ func (h Handler) handle(ctx context.Context, riss data.RepositoryIssue) error {
 		}
 		//TODO: Check the content for security-related keywords.
 		ll.Info("notifying")
-		err = h.Notify(riss, comment)
-		if err != nil {
-			ll.WithError(err).Error("error sending notification")
-			return fmt.Errorf("issue: error sending notification for comment %v: %v", comment.URL, err)
+		if h.Notify != nil {
+			err = h.Notify(riss, comment)
+			if err != nil {
+				ll.WithError(err).Error("error sending notification")
+				return fmt.Errorf("issue: error sending notification for comment %v: %v", comment.URL, err)
+			}
 		}
 	}
 	return nil
 }
 
 func main() {
-	//TODO: Populate handler.
-	h := Handler{}
+	githubToken := os.Getenv("GITHUB_TOKEN")
+	collector := github.NewCollector(githubToken)
+
+	// commentTableName := os.Getenv("COMMENT_TABLE_NAME")
+	// awsRegion := os.Getenv("AWS_REGION")
+	// store, err := dynamo.NewCommentStore(awsRegion, commentTableName)
+	// if err != nil {
+	// 	logger.For(pkg, "main").WithError(err).Fatal("failed to create comment store")
+	// }
+	alertTopic := os.Getenv("ALERT_SNS_TOPIC_ARN")
+	n := notify.NewSNS(alertTopic)
+	h := Handler{
+		ListComments: collector.Comments,
+		Notify:       n.Notify,
+		MarkNotified: func(comment data.Comment) (exists bool, err error) {
+			//TODO: Make it mark it properly.
+			// return store.Put(data.Comment{})
+			return false, nil
+		},
+	}
 	lambda.Start(h.Handle)
 }
