@@ -46,8 +46,8 @@ functions:
     handler: bin/start
     memorySize: 256 # MB
     timeout: 300 # seconds
-    # events:
-    #   - schedule: rate(1 hour)
+    events:
+      - schedule: rate(1 hour)
     reservedConcurrency: 1
     environment:
       REPOSITORY_TABLE_NAME: ${self:service}-${opt:stage, self:provider.stage}-repository
